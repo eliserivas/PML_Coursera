@@ -1,0 +1,140 @@
+---
+title: "Course Assignment"
+author: "Elise Rivas"
+output: rmarkdown::github_document
+---
+
+# Practical Machine Learning: Prediction Assignment Write-Up
+
+Using the caret package and classification machine learning techniques, we predict the manner of exercise a participant was doing using metrics from fitness performance devices, such as a FitBit. 
+
+This analysis requires the caret package and use of cross-validation to predict the "classe" variable, which labels the exercise as A, B, C, D or E. In this dataset there are 6 participants who were asked to perform barbell lifts correctly and incorrectly in 5 different ways (A-E).
+
+The final model will be tested on 20 cases for accuracy
+
+## Data Exploration
+
+Load in appropriate libraries
+```{r, echo=FALSE, message=FALSE}
+library(caret)
+library(randomForest)
+library(e1071)
+library(corrplot)
+library(klaR)
+library(gbm)
+library(kknn)
+library(corrplot)
+```
+
+Read in the csvs with the training and testing data
+```{r}
+set.seed(555)
+
+setwd("C:/Users/elrivas/Documents/Trainings/JHU/Class8")
+train <- read.csv("pml-training.csv")
+test <- read.csv("pml-testing.csv")
+```
+
+Explore columns and their characteristics
+```{r}
+col_sums <- colSums(is.na(train))/nrow(train)
+length(which(col_sums > 0.97))
+```
+67 out of the 160 columns are more than 97% NA. This suggests these variables are likely not predictive and can be eliminated.
+
+## Preprocessing
+```{r}
+# Remove timestamp, name, and row variables
+train <- train[,-c(1:5)]
+test <- test[,-c(1:5)]
+```
+Timestamp and name variables will carry no predictive weight in the final model. They can be removed.
+
+```{r}
+# Find variables with little variance, which are likely not predictive
+nz <- nearZeroVar(train)
+length(nz)
+train <- train[,-nz]
+test <- test[-nz]
+```
+60 of the remaining 155 columns have near zero variance, implying that they won't indicate much about which action is being performed by the participant.
+
+```{r}
+# If above 95% NA, get rid of column
+perc_NA <- colSums(is.na(train))/nrow(train)
+na_index <- which(perc_NA>0.95)
+train <- train[,-na_index]
+test <- test[,-na_index]
+```
+41 of the remaining columns are more than 95% NA, eliminate them.
+
+Explore relationships between columns
+```{r}
+corrplot(cor(train[,-54]), method="color", type="lower") # most are uncorrelated
+```
+Few of the remaining columns are highly correlated, so we will keep them.
+
+## Partition Data and Make Cross Validation Settings
+```{r}
+split <- createDataPartition(train$classe, p = .75, list=FALSE)
+training <- train[split,]
+testing <- train[-split,]
+
+train_control<- trainControl(method="cv", number=3, savePredictions = TRUE)
+```
+We split the data 75/25 into the train and test set. Using the trainControl function, we set the parameters for crosss validation, which splits the data into 3 sections, using 2/3 as the training set for each iteration.
+
+## Models
+
+### Out Of Sample Estsimation
+For each of the models, the out of sample error will most likely be more than the in sample error. Because the model wasn't trained on the the test data, it makes sense that the foreign data will produce a larger error than the training, familiar data.
+
+### Random Forest
+```{r, cache=TRUE}
+# Reduce number of trees from 500 to 200 to increase processing speed
+mod_rf<- train(classe~., data=training, trControl=train_control, method="rf", ntree=200)
+mod_rf$results
+mod_rf$finalModel
+
+
+pred_rf <- predict(mod_rf, newdata = testing)
+confusionMatrix(pred_rf, testing$classe) # 99.86%
+```
+The Random Forest algorithm has strong predictive power. It's the result of many decision trees, where the top node is limited to a different set of variables each time to reduce bias. It allows each variable to be the main predictor.
+
+### GBM
+```{r, cache=TRUE}
+train_control_boost <- trainControl(method="repeatedcv", number=3, repeats = 1)
+mod_gbm <- train(classe~., data=training, method="gbm", trControl= train_control_boost, verbose = F)
+mod_gbm$results
+mod_gbm$finalModel
+pred_gbm <- predict(mod_gbm, newdata = testing)
+confusionMatrix(pred_gbm, testing$classe) # 98.88%
+```
+This boosted tree model requires a boosted sampling method, so we change the trainControl. GBM weighs the incorrect predictions and performs different iterations until the best result is produced. This model is also a good predictor, but not quite as good as the Random Forest.
+
+### K Nearest Neighbor (KNN)
+```{r, cache=TRUE}
+mod_knn <- train(classe~., data=training, trControl=train_control, method='kknn')
+mod_knn$results
+mod_knn$finalModel
+pred_knn <- predict(mod_knn, newdata=testing)
+confusionMatrix(pred_knn, testing$classe) # 99.33
+```
+The K Nearest Neighbor algorithm uses distance to quantify similarity. Unlike the other models, it is not tree based. It proves to be an accurate predictor, still not quite as strong as the Random Forest. Perhaps under a different seed number it would outperform.
+
+## Best Model
+Random forest is the best model. Now we will use it to predict the 20 test cases
+```{r}
+
+valid_pred_rf <- predict(mod_rf, newdata=test)
+valid_pred_rf
+
+```
+
+
+
+
+
+
+

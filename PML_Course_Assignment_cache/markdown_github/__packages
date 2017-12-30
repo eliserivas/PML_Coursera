@@ -1,0 +1,13 @@
+base
+lattice
+ggplot2
+caret
+randomForest
+e1071
+corrplot
+MASS
+klaR
+survival
+gbm
+kknn
+plyr
